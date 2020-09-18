@@ -1,1 +1,1 @@
-web: gunicorn app:twilio-sms
+web: python twilio-sms.py
