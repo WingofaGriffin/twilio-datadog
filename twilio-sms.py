@@ -1,18 +1,24 @@
-from flask import Flask, request, redirect
-from twilio.twiml.messaging_response import MessagingResponse
+import os
+from flask import Flask, request
+from twilio.rest import TwilioRestClient
 
 app = Flask(__name__)
 
-@app.route("/sms", methods=['GET', 'POST'])
-def sms_reply():
-    """Respond to incoming calls with a simple text message."""
-    # Start our TwiML response
-    resp = MessagingResponse()
+# Find these values at https://twilio.com/user/account
+account_sid = os.environ['TWILIO_ACCOUNT_SID']
+auth_token = os.environ['TWILIO_AUTH_TOKEN']
+client = TwilioRestClient(account_sid, auth_token)
 
-    # Add a message
-    resp.message("The Robots are coming! Head for the hills!")
 
-    return str(resp)
+@app.route("/", methods=['POST'])
+def receive_order():
+    message = client.messages.create(
+        to=os.environ['PHONE_NUMBER'],
+        from_=os.environ['TWILIO_NUMBER'],
+        body="Hello, World!")
+    return '', 200
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
