@@ -86,12 +86,12 @@ Thankfully, we already have documentation [outlining how to set up our webhook i
     `https://<ACCOUNT_ID>:<AUTH_TOKENT>@api.twilio.com/2010-04-01/Accounts/<ACCOUNT_ID>/Messages.json`
     replacing `<ACCOUNT_ID>` and `<AUTH_TOKEN>` with the respective data from [your Twilio console](https://twilio.com/user/account). Please note you need to fill in `<ACCOUNT_ID>` twice in this URL.
 
-4. Under **Payload**, add the code below, replacing the "To" number with the phone number you want the alert to go to, and "From" with your Twilio phone number.:
+4. Under **Payload**, add the code below, replacing the "To" number with the phone number you want the alert to go to, and "From" with your Twilio phone number. Customize the "Body" with what you would like sent in the text. You can even add in [custom fields directly from Datadog](https://docs.datadoghq.com/integrations/webhooks/#usage).
 ```json
 {
     "To": "+1347XXXXXXX",
     "From": "+1347XXXXXX",
-    "Body": "$EVENT_TITLE \n Related Graph: $SNAPSHOT"
+    "Body": "<YOUR_MESSAGE_HERE>"
 }
 ```
 
