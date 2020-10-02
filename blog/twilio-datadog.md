@@ -1,14 +1,38 @@
 ## Monitoring your Twilio app with Datadog and Twilio
 
-With Twilio's [Annual Signal Conference](https://signal.twilio.com/) having come to a conclusion October 1st, we thought it would be fitting to create an update to [the last blog post Datadog has done regarding how to use Twilio alongside Datadog made in 2014](https://www.datadoghq.com/blog/send-alerts-sms-customizable-webhooks-twilio/).
+With Twilio's Annual [Signal Conference](https://signal.twilio.com/) having come to a conclusion October 1st, we thought it would be fitting to create an update to [our last blog post on Twilio with Datadog](https://www.datadoghq.com/blog/send-alerts-sms-customizable-webhooks-twilio/).
 
-In this blog post, we will outline how to use Datadog's comprehensive Synthetics suite to monitor your Twilio app's endpoints, as well as using the power of Twilio's API to send alerts through SMS on your monitors. So in the end you can use a Twilio notification to notify you if your Twilio app is down.
+In this blog post, we will outline how to use Datadog's comprehensive [Synthetics suite](https://docs.datadoghq.com/synthetics/) to monitor your Twilio app's endpoints, as well as using the power of Twilio's API to send alerts through SMS on your monitors via [Webhooks](https://docs.datadoghq.com/integrations/webhooks/#overview). Where, once completed, we will use a Twilio notification to notify us if our Twilio app goes down.
 
 ### Getting Started With Your Twilio App
 
-If you are reading this, we suspect you already have a Twilio app deployed and ready to go. As such, we decided to follow [this "Hello, World!" style app using Twilio, Heroku and Python](https://www.twilio.com/blog/2017/02/stripe-sms-notifications-via-twilio-heroku-and-python.html) as a simple starting place. This gives us the starting point of a Flask app deployed on Heroku that will respond back to any number that texts it.
+If you are reading this, we suspect you already have a Twilio app deployed and ready to go. As such, we decided to follow [this "Hello, World!" style app using Twilio, Heroku and Python](https://www.twilio.com/blog/2017/02/stripe-sms-notifications-via-twilio-heroku-and-python.html) as a simple starting place. This gives us the starting point of a Flask app deployed on Heroku that will respond back to any number that texts it. We stopped with the code block that reads:
+```python
+import os
+from flask import Flask, request
+from twilio.rest import Client
 
-Now that we have that set up, we can add this endpoint to a Datadog Synthetics test. To start, navigate to [this page](https://app.datadoghq.com/synthetics/create), which will bring up the New API Test page. Here we will create a test emulating a real world call to our app's endpoint and recording the response for our monitoring purposes. Let's go through the following options from top to bottom:
+app = Flask(__name__)
+
+# Find these values at https://twilio.com/user/account
+account_sid = os.environ['TWILIO_ACCOUNT_SID']
+auth_token = os.environ['TWILIO_AUTH_TOKEN']
+client = Client(account_sid, auth_token)
+
+@app.route("/", methods=['POST'])
+def receive_order():
+    message = client.messages.create(
+        to=os.environ['PHONE_NUMBER'],
+        from_=os.environ['TWILIO_NUMBER'],
+        body="Hello, World!")
+    return '', 200
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
+```
+
+Now that we have that set up, we can add this endpoint to a Datadog Synthetics test. To start, navigate to [this page](https://app.datadoghq.com/synthetics/create), which will bring up the **New API Test** page. Here we will create a test emulating a real world call to our app's endpoint and recording the response for our monitoring purposes. Let's go through the following options from top to bottom:
 
 ![Request type and definition](1.png)
 
@@ -22,17 +46,17 @@ Change `GET` to `POST`, and then copy the URL of the endpoint you have already p
 
 ![Advanced request options](2.png)
 
-If we look into advanced options, we can see there are plenty of other sections we could fill out. For example, if your Twilio app's response depending on the input from the HTTP request, you could add the respective headers or body with a sample request. `text/xml` was explicitly set here, as Twilio tends to favor this body type over others. However, as the app we are working on right now requires no headers or body, we can set this to `None` and leave everything else blank.
+If we look into advanced options, we can see there are plenty of other sections we could fill out. For example, if your Twilio app's response depending on the input from the HTTP request, you could add the respective headers or body with a sample request. However, as the app we are working on right now requires no headers or body, we can set this to `None` and leave everything else blank.
 
 ![Name, tags, and locations](3.png)
 
 If you would like to change the name of your test, you may do it here. You can also [set tags](https://docs.datadoghq.com/getting_started/tagging/) here to help organize your tests and services if you have a robust Datadog setup.
 
-For the Locations section, every single region checked will send a test to your app. This will result in Twilio calls being made, and responses being sent, which is important to keep in mind.
+For the **Locations** section, every single region checked will send a test to your app. This will result in Twilio calls being made, and responses being sent, which is important to keep in mind. There is also an option to use a [private Synthetics test location](https://www.datadoghq.com/blog/private-synthetic-monitoring/).
 
 #### 3. Specify test frequency
 
-The frequency section is exactly what it sounds like: how often the test is performed. As every test will send a SMS, setting it relatively infrequently is likely safe, but if you know that consistent testing is important, you have the power to change it as needed. It is also important to keep in mind that you have the ability to pause testing and manually start a test whenever you would like.
+The frequency section is exactly what it sounds like: how often the test is performed. As every test will send a SMS, setting it relatively infrequently is likely safe, but if you know that consistent testing is important, you have the power to change it as needed. It is also important to keep in mind that you have the ability to [pause testing and manually start a test](https://docs.datadoghq.com/synthetics/search/#action-tray-options) whenever you would like.
 
 ![Assertions, alert conditions, and notifications](4.png)
 
@@ -42,15 +66,15 @@ This is where we define what constitutes a successful test. In this case, we are
 
 #### 5. Define alert conditions
 
-We are keeping this section as is for now in order to get an alert immediately after a failed test, but if you would like to change this, this is where it is done.
+We are keeping this section as is for now in order to get an alert immediately after a failed test, but please change this to your personal needs.
 
-We will get to #6 after we set up webhooks.
+Section 6 will be discussed after we set up webhooks in the next section.
 
 ### Setting up webhook notifications with Twilio
 
 Now that we have a test set up, we want a way to be notified outside of the Datadog platform when something unexpected happens. As we are already using Twilio in this app, why not get a notification through a SMS?
 
-Thankfully, we already have documentation [outlining how to set up our webhook integration with Twilio](https://docs.datadoghq.com/integrations/webhooks/#sending-sms-through-twilio). It requires a few steps.
+Thankfully, we already have documentation [outlining how to set up our webhook integration with Twilio](https://docs.datadoghq.com/integrations/webhooks/#sending-sms-through-twilio). It requires a few steps, which we will run through now.
 
 ![Webhook configuration](5.png)
 
@@ -60,8 +84,7 @@ Thankfully, we already have documentation [outlining how to set up our webhook i
 
 3. Under **URL** add in the url: 
     `https://<ACCOUNT_ID>:<AUTH_TOKENT>@api.twilio.com/2010-04-01/Accounts/<ACCOUNT_ID>/Messages.json`
-    replacing `<ACCOUNT_ID>` and `<AUTH_TOKEN>` with the respective data from your Twilio console.
-    - Please note you need to fill in `<ACCOUNT_ID>` twice in this URL.
+    replacing `<ACCOUNT_ID>` and `<AUTH_TOKEN>` with the respective data from [your Twilio console](https://twilio.com/user/account). Please note you need to fill in `<ACCOUNT_ID>` twice in this URL.
 
 4. Under **Payload**, add the code below, replacing the "To" number with the phone number you want the alert to go to, and "From" with your Twilio phone number.:
 ```json
@@ -76,7 +99,7 @@ Thankfully, we already have documentation [outlining how to set up our webhook i
 
 6. Save your webhook.
 
-This will now give us an [option to @ notify our Twilio webhook](https://docs.datadoghq.com/monitors/notifications/?tab=is_alert#notification) in our Synthetics Test we previously created. As shown in the screenshot we can add `@webhook-twilio` to call our Twilio webhook, as well as add any message we would like shown in Datadog.
+This will now give us an [option to @ notify our Twilio webhook](https://docs.datadoghq.com/monitors/notifications/?tab=is_alert#notification) in our Synthetics Test we previously created. As shown in the earlier screenshot, we can add `@webhook-twilio` to call our Twilio webhook, as well as add any message we would like shown in Datadog.
 
 ### Get started with your own Twilio + Datadog solution
 
